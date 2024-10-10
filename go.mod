@@ -1,4 +1,4 @@
-module JarHax
+module github.com/mrnavastar/babe
 
 go 1.22
 
