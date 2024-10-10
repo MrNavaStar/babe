@@ -4,12 +4,13 @@ import (
 	"archive/zip"
 	"context"
 	"fmt"
-	"github.com/mrnavastar/assist/bytes"
-	"github.com/mrnavastar/assist/fs"
-	"golang.org/x/sync/errgroup"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/mrnavastar/assist/bytes"
+	fss "github.com/mrnavastar/assist/fs"
+	"golang.org/x/sync/errgroup"
 )
 
 type JarMember struct {
@@ -67,15 +68,12 @@ func ForJarMember(filename string, iter func(*JarMember) error) error {
 	return errs.Wait()
 }
 
-func ModifyJar(filename string, modifier func(*JarMember) error) error {
+func CreateJar(filename string) (chan *JarMember, *errgroup.Group) {
 	c := make(chan *JarMember)
-	if !fs.Exists(filename) {
-		return fmt.Errorf("%s does not exist", filename)
-	}
 
 	errs, _ := errgroup.WithContext(context.Background())
 	errs.Go(func() error {
-		file, err := os.OpenFile(filename+"-modified.zip", os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.ModePerm)
+		file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.ModePerm)
 		if err != nil {
 			return err
 		}
@@ -89,20 +87,24 @@ func ModifyJar(filename string, modifier func(*JarMember) error) error {
 
 			w, err := writer.CreateHeader(&zip.FileHeader{Name: member.Name, Method: zip.Deflate})
 			if err != nil {
-				panic(err)
+				return err
 			}
 			_, err = w.Write(*member.Buffer.Data)
 			if err != nil {
 				return err
 			}
 		}
-		writer.Close()
-
-		if err = os.Remove(filename); err != nil {
-			return err
-		}
-		return os.Rename(filename+"-modified.zip", filename)
+		return writer.Close()
 	})
+	return c, errs
+} 
+
+func ModifyJar(filename string, modifier func(*JarMember) error) error {
+	if !fss.Exists(filename) {
+		return fmt.Errorf("%s does not exist", filename)
+	}
+
+	c, errs := CreateJar(filename+"-modified.zip")
 
 	err := ForJarMember(filename, func(member *JarMember) error {
 		if err := modifier(member); err != nil {
@@ -119,5 +121,13 @@ func ModifyJar(filename string, modifier func(*JarMember) error) error {
 	if err != nil {
 		return err
 	}
+	
+	if err = os.Remove(filename); err != nil {
+		return err
+	}
+	if err = os.Rename(filename+"-modified.zip", filename); err != nil {
+		return err
+	}
+
 	return errs.Wait()
 }

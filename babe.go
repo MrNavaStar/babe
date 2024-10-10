@@ -7,10 +7,11 @@ import (
 
 func main() {
 	app := cli.App{
+		Name: "babe",
 		Commands: []*cli.Command{
 			{
 				Name:  "relocate",
-				Usage: "jarhax relocate <file.jar> <from:to>...",
+				Usage: "babe relocate <file.jar> <from:to>...",
 				Args:  true,
 				Action: func(c *cli.Context) error {
 					return RelocateJar(c.Args().First(), ParseRelocations(c.Args().Slice()[1:]))
@@ -18,7 +19,7 @@ func main() {
 			},
 			{
 				Name:  "minimize",
-				Usage: "jarhax minimize <file.jar>",
+				Usage: "babe minimize <file.jar>",
 				Args:  true,
 				Action: func(c *cli.Context) error {
 					return MinimizeJar(c.Args().First())

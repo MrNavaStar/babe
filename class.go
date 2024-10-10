@@ -29,6 +29,8 @@ const (
 	JAVA_20  = 64
 	JAVA_21  = 65
 	JAVA_22  = 66
+	JAVA_23  = 67
+	JAVA_24  = 68
 
 	CONSTANT_Class              = 7
 	CONSTANT_Fieldref           = 9
