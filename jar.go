@@ -1,4 +1,4 @@
-package main
+package babe
 
 import (
 	"archive/zip"

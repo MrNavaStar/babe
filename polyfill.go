@@ -1,4 +1,4 @@
-package main
+package babe
 
 func Polyfill(class *Class, version int) {
 	if class.Supports(version) {

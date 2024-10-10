@@ -1,4 +1,4 @@
-package main
+package babe
 
 func MinimizeJar(filename string) error {
 
