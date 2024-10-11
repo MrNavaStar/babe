@@ -2,7 +2,7 @@ package babe
 
 import (
 	"errors"
-	"github.com/mrnavastar/assist/bytes"
+	"bytes"
 	"slices"
 	"strings"
 )
@@ -70,8 +70,8 @@ func RelocateJar(filename string, relocations [][]string) error {
 		}
 
 		if RelocateClass(&class, relocations) {
-			member.Buffer = bytes.NewBuffer()
-			class.Write(member.Buffer.Data)
+			member.Buffer = bytes.Buffer{}
+			class.Write(&member.Buffer)
 		}
 		return nil
 	})
