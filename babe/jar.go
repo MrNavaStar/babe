@@ -4,18 +4,18 @@ import (
 	"archive/zip"
 	"context"
 	"fmt"
-	"bytes"
 	"io"
 	"os"
 	"strings"
 
+	"github.com/mrnavastar/assist/bytes"
 	fss "github.com/mrnavastar/assist/fs"
 	"golang.org/x/sync/errgroup"
 )
 
 type JarMember struct {
 	Name   string
-	Buffer bytes.Buffer 
+	Buffer *bytes.Buffer
 	delete bool
 }
 
@@ -28,7 +28,7 @@ func (member *JarMember) GetAsClass() (Class, error) {
 		return Class{}, ErrNotClass
 	}
 	var class Class
-	if err := class.Read(&member.Buffer); err != nil {
+	if err := class.Read(*member.Buffer.Data); err != nil {
 		return class, err
 	}
 	return class, nil
@@ -53,8 +53,8 @@ func ForJarMember(filename string, iter func(*JarMember) error) error {
 				return err
 			}
 
-			member := JarMember{file.Name, bytes.Buffer{}, false}
-			if _, err = io.Copy(&member.Buffer, f); err != nil {
+			member := JarMember{file.Name, bytes.NewBuffer(), false}
+			if _, err = io.Copy(member.Buffer, f); err != nil {
 				return err
 			}
 			f.Close()
@@ -89,7 +89,7 @@ func CreateJar(filename string) (chan *JarMember, *errgroup.Group) {
 			if err != nil {
 				return err
 			}
-			_, err = w.Write(member.Buffer.Bytes())
+			_, err = w.Write(*member.Buffer.Data)
 			if err != nil {
 				return err
 			}

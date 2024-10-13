@@ -1,9 +1,9 @@
 package babe
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
+
+	"github.com/mrnavastar/assist/bytes"
 )
 
 const (
@@ -68,42 +68,109 @@ const (
 	ACC_MODULE     = 0x8000
 )
 
-var ErrNotClass = errors.New("not a jvm class file")
-var ErrInvalidClass = errors.New("invalid class file")
+type InfoConstructor func() Info
 
-type ConstantInfo interface {}
+var infoConstructors = map[byte]InfoConstructor{
+	CONSTANT_Class:              func() Info { return &ClassInfo{} },
+	CONSTANT_Fieldref:           func() Info { return &FieldRefInfo{} },
+	CONSTANT_Methodref:          func() Info { return &MethodRefInfo{} },
+	CONSTANT_InterfaceMethodref: func() Info { return &InterfaceMethodRefInfo{} },
+	CONSTANT_String:             func() Info { return &StringInfo{} },
+	CONSTANT_Integer:            func() Info { return &IntegerInfo{} },
+	CONSTANT_Float:              func() Info { return &FloatInfo{} },
+	CONSTANT_Long:               func() Info { return &LongInfo{} },
+	CONSTANT_Double:             func() Info { return &DoubleInfo{} },
+	CONSTANT_NameAndType:        func() Info { return &NameAndTypeInfo{} },
+	CONSTANT_Utf8:               func() Info { return &Utf8Info{} },
+	CONSTANT_MethodHandle:       func() Info { return &MethodHandleInfo{} },
+	CONSTANT_MethodType:         func() Info { return &MethodTypeInfo{} },
+	CONSTANT_Dynamic:            func() Info { return &DynamicInfo{} },
+	CONSTANT_InvokeDynamic:      func() Info { return &InvokeDynamicInfo{} },
+	CONSTANT_Module:             func() Info { return &ModuleInfo{} },
+	CONSTANT_Package:            func() Info { return &PackageInfo{} },
+}
+
+var ErrNotClass = errors.New("jarhax: not a jvm class file")
+var ErrInvalidClass = errors.New("jarhax: invalid class file")
+
+type Info interface {
+	Read(buf *bytes.Buffer)
+	Write(buf *bytes.Buffer)
+}
 
 type ClassInfo struct {
-	ConstantInfo
-	Tag		  byte
 	NameIndex uint16
 }
 
+func (info *ClassInfo) Read(buf *bytes.Buffer) {
+	info.NameIndex = buf.ReadU16()
+}
+
+func (info *ClassInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_Class)
+	buf.WriteU16(info.NameIndex)
+}
+
 type FieldRefInfo struct {
-	ConstantInfo
-	Tag				 byte
 	ClassIndex       uint16
 	NameAndTypeIndex uint16
+}
+
+func (info *FieldRefInfo) Read(buf *bytes.Buffer) {
+	info.ClassIndex = buf.ReadU16()
+	info.NameAndTypeIndex = buf.ReadU16()
+}
+
+func (info *FieldRefInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_Fieldref)
+	buf.WriteU16(info.ClassIndex)
+	buf.WriteU16(info.NameAndTypeIndex)
 }
 
 type MethodRefInfo struct {
 	FieldRefInfo
 }
 
+func (info *MethodRefInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_Methodref)
+	buf.WriteU16(info.ClassIndex)
+	buf.WriteU16(info.NameAndTypeIndex)
+}
+
 type InterfaceMethodRefInfo struct {
 	FieldRefInfo
 }
 
+func (info InterfaceMethodRefInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_InterfaceMethodref)
+	buf.WriteU16(info.ClassIndex)
+	buf.WriteU16(info.NameAndTypeIndex)
+}
+
 type StringInfo struct {
-	ConstantInfo
-	Tag			byte
 	StringIndex uint16
 }
 
+func (info *StringInfo) Read(buf *bytes.Buffer) {
+	info.StringIndex = buf.ReadU16()
+}
+
+func (info *StringInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_String)
+	buf.WriteU16(info.StringIndex)
+}
+
 type IntegerInfo struct {
-	ConstantInfo
-	Tag	  byte
 	Bytes uint32
+}
+
+func (info *IntegerInfo) Read(buf *bytes.Buffer) {
+	info.Bytes = buf.ReadU32()
+}
+
+func (info *IntegerInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_Integer)
+	buf.WriteU32(info.Bytes)
 }
 
 func (info *IntegerInfo) GetInt() int32 {
@@ -114,11 +181,25 @@ type FloatInfo struct {
 	IntegerInfo
 }
 
+func (info *FloatInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_Float)
+	buf.WriteU32(info.Bytes)
+}
+
 type LongInfo struct {
-	ConstantInfo
-	Tag		  byte
 	HighBytes uint32
 	LowBytes  uint32
+}
+
+func (info *LongInfo) Read(buf *bytes.Buffer) {
+	info.HighBytes = buf.ReadU32()
+	info.LowBytes = buf.ReadU32()
+}
+
+func (info *LongInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_Long)
+	buf.WriteU32(info.HighBytes)
+	buf.WriteU32(info.LowBytes)
 }
 
 func (info *LongInfo) GetLong() int64 {
@@ -129,18 +210,42 @@ type DoubleInfo struct {
 	LongInfo
 }
 
+func (info *DoubleInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_Double)
+	buf.WriteU32(info.HighBytes)
+	buf.WriteU32(info.LowBytes)
+}
+
 type NameAndTypeInfo struct {
-	ConstantInfo
-	Tag				byte
 	NameIndex       uint16
 	DescriptorIndex uint16
 }
 
+func (info *NameAndTypeInfo) Read(buf *bytes.Buffer) {
+	info.NameIndex = buf.ReadU16()
+	info.DescriptorIndex = buf.ReadU16()
+}
+
+func (info *NameAndTypeInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_NameAndType)
+	buf.WriteU16(info.NameIndex)
+	buf.WriteU16(info.DescriptorIndex)
+}
+
 type Utf8Info struct {
-	ConstantInfo
-	Tag	   byte
 	Length uint16
 	Bytes  []byte
+}
+
+func (info *Utf8Info) Read(buf *bytes.Buffer) {
+	info.Length = buf.ReadU16()
+	info.Bytes = buf.ReadBytes(int(info.Length))
+}
+
+func (info *Utf8Info) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_Utf8)
+	buf.WriteU16(info.Length)
+	buf.Write(info.Bytes)
 }
 
 func (info *Utf8Info) Set(string string) {
@@ -154,41 +259,110 @@ func (info Utf8Info) String() string {
 }
 
 type MethodHandleInfo struct {
-	ConstantInfo
-	Tag			   byte
 	ReferenceKind  byte
 	ReferenceIndex uint16
 }
 
+func (info *MethodHandleInfo) Read(buf *bytes.Buffer) {
+	info.ReferenceKind = buf.ReadByte()
+	info.ReferenceIndex = buf.ReadU16()
+}
+
+func (info *MethodHandleInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_MethodHandle)
+	buf.WriteByte(info.ReferenceKind)
+	buf.WriteU16(info.ReferenceIndex)
+}
+
 type MethodTypeInfo struct {
-	ConstantInfo
-	Tag				byte
 	DescriptorIndex uint16
 }
 
+func (info *MethodTypeInfo) Read(buf *bytes.Buffer) {
+	info.DescriptorIndex = buf.ReadU16()
+}
+
+func (info *MethodTypeInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_MethodType)
+	buf.WriteU16(info.DescriptorIndex)
+}
+
 type DynamicInfo struct {
-	ConstantInfo
-	Tag						 byte
 	BootstrapMethodAttrIndex uint16
 	NameAndTypeIndex         uint16
+}
+
+func (info *DynamicInfo) Read(buf *bytes.Buffer) {
+	info.BootstrapMethodAttrIndex = buf.ReadU16()
+	info.NameAndTypeIndex = buf.ReadU16()
+}
+
+func (info *DynamicInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_Dynamic)
+	buf.WriteU16(info.BootstrapMethodAttrIndex)
+	buf.WriteU16(info.NameAndTypeIndex)
 }
 
 type InvokeDynamicInfo struct {
 	DynamicInfo
 }
 
+func (info *InvokeDynamicInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_InvokeDynamic)
+	buf.WriteU16(info.BootstrapMethodAttrIndex)
+	buf.WriteU16(info.NameAndTypeIndex)
+}
+
 type ModuleInfo struct {
 	ClassInfo
+}
+
+func (info ModuleInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_Module)
+	buf.WriteU16(info.NameIndex)
 }
 
 type PackageInfo struct {
 	ClassInfo
 }
 
+func (info *PackageInfo) Write(buf *bytes.Buffer) {
+	buf.WriteByte(CONSTANT_Package)
+	buf.WriteU16(info.NameIndex)
+}
+
 type AttributeInfo struct {
 	AttributeNameIndex uint16
 	AttributeLength    uint32
 	Data               []byte
+}
+
+func (info *AttributeInfo) Read(buf *bytes.Buffer) {
+	info.AttributeNameIndex = buf.ReadU16()
+	info.AttributeLength = buf.ReadU32()
+	info.Data = buf.ReadBytes(int(info.AttributeLength))
+}
+
+func (info *AttributeInfo) Write(buf *bytes.Buffer) {
+	buf.WriteU16(info.AttributeNameIndex)
+	buf.WriteU32(info.AttributeLength)
+	buf.Write(info.Data)
+}
+
+func ReadAttributes(buf *bytes.Buffer, count int) []AttributeInfo {
+	var attributes []AttributeInfo
+	for i := 0; i < count; i++ {
+		var attribute AttributeInfo
+		attribute.Read(buf)
+		attributes = append(attributes, attribute)
+	}
+	return attributes
+}
+
+func WriteAttributes(buf *bytes.Buffer, attributes []AttributeInfo) {
+	for _, attribute := range attributes {
+		attribute.Write(buf)
+	}
 }
 
 type FieldInfo struct {
@@ -198,6 +372,23 @@ type FieldInfo struct {
 	DescriptorIndex uint16
 	AttributesCount uint16
 	Attributes      []AttributeInfo
+}
+
+func (info *FieldInfo) Read(class *Class, buf *bytes.Buffer) {
+	info.class = class
+	info.AccessFlags = buf.ReadU16()
+	info.NameIndex = buf.ReadU16()
+	info.DescriptorIndex = buf.ReadU16()
+	info.AttributesCount = buf.ReadU16()
+	info.Attributes = ReadAttributes(buf, int(info.AttributesCount))
+}
+
+func (info *FieldInfo) Write(buf *bytes.Buffer) {
+	buf.WriteU16(info.AccessFlags)
+	buf.WriteU16(info.NameIndex)
+	buf.WriteU16(info.DescriptorIndex)
+	buf.WriteU16(info.AttributesCount)
+	WriteAttributes(buf, info.Attributes)
 }
 
 func (info *FieldInfo) HasModifier(mod int) bool {
@@ -221,7 +412,7 @@ type Class struct {
 	MinorVersion      uint16
 	MajorVersion      uint16
 	ConstantPoolCount uint16
-	ConstantPool      []ConstantInfo
+	ConstantPool      []Info
 	AccessFlags       uint16
 	ThisClass         uint16
 	SuperClass        uint16
@@ -235,19 +426,90 @@ type Class struct {
 	Attributes        []AttributeInfo
 }
 
-func (class *Class) Read(b *bytes.Buffer) error {
-	err := binary.Read(b, binary.BigEndian, &class)
-	if err != nil {
-		return err
-	}
+func (class *Class) Read(b []byte) error {
+	buf := bytes.Buffer{Data: &b, Index: 0}
+
+	class.Magic = buf.ReadU32()
 	if class.Magic != 0xCAFEBABE {
 		return ErrNotClass
 	}
+	class.MinorVersion = buf.ReadU16()
+	class.MajorVersion = buf.ReadU16()
+
+	class.ConstantPoolCount = buf.ReadU16()
+	for i := uint16(0); i < class.ConstantPoolCount-1; i++ {
+		tag := buf.ReadByte()
+		infoConstructor, ok := infoConstructors[tag]
+		if !ok {
+			return ErrInvalidClass
+		}
+
+		info := infoConstructor()
+		info.Read(&buf)
+		class.ConstantPool = append(class.ConstantPool, info)
+
+		if tag == CONSTANT_Long || tag == CONSTANT_Double {
+			i++ // Java specification: long and double take up two entries
+		}
+	}
+
+	class.AccessFlags = buf.ReadU16()
+	class.ThisClass = buf.ReadU16()
+	class.SuperClass = buf.ReadU16()
+
+	class.InterfacesCount = buf.ReadU16()
+	for i := uint16(0); i < class.InterfacesCount; i++ {
+		class.Interfaces = append(class.Interfaces, buf.ReadU16())
+	}
+	class.FieldsCount = buf.ReadU16()
+	for i := uint16(0); i < class.FieldsCount; i++ {
+		var fieldInfo FieldInfo
+		fieldInfo.Read(class, &buf)
+		class.Fields = append(class.Fields, fieldInfo)
+	}
+	class.MethodCount = buf.ReadU16()
+	for i := uint16(0); i < class.MethodCount; i++ {
+		var methodInfo MethodInfo
+		methodInfo.Read(class, &buf)
+		class.Methods = append(class.Methods, methodInfo)
+	}
+
+	class.AttributesCount = buf.ReadU16()
+	class.Attributes = ReadAttributes(&buf, int(class.AttributesCount))
 	return nil
 }
 
-func (class *Class) Write(b *bytes.Buffer) error {
-	return binary.Write(b, binary.BigEndian, class)
+func (class *Class) Write(b *[]byte) {
+	buf := bytes.Buffer{Data: b, Index: 0}
+
+	buf.WriteU32(class.Magic)
+	buf.WriteU16(class.MinorVersion)
+	buf.WriteU16(class.MajorVersion)
+
+	buf.WriteU16(class.ConstantPoolCount)
+	for _, constant := range class.ConstantPool {
+		constant.(Info).Write(&buf)
+	}
+
+	buf.WriteU16(class.AccessFlags)
+	buf.WriteU16(class.ThisClass)
+	buf.WriteU16(class.SuperClass)
+
+	buf.WriteU16(class.InterfacesCount)
+	for _, i := range class.Interfaces {
+		buf.WriteU16(i)
+	}
+	buf.WriteU16(class.FieldsCount)
+	for _, field := range class.Fields {
+		field.Write(&buf)
+	}
+	buf.WriteU16(class.MethodCount)
+	for _, method := range class.Methods {
+		method.Write(&buf)
+	}
+
+	buf.WriteU16(class.AttributesCount)
+	WriteAttributes(&buf, class.Attributes)
 }
 
 func (class *Class) Supports(version int) bool {
@@ -258,7 +520,7 @@ func (class *Class) GetConstant(index uint16) any {
 	return class.ConstantPool[index-1]
 }
 
-func (class *Class) SetConstant(index uint16, constant ConstantInfo) {
+func (class *Class) SetConstant(index uint16, constant Info) {
 	class.ConstantPool[index-1] = constant
 }
 
