@@ -525,7 +525,7 @@ func (class *Class) SetConstant(index uint16, constant Info) {
 }
 
 func (class *Class) GetClassName() string {
-	return class.GetConstant(class.GetConstant(class.ThisClass).(ClassInfo).NameIndex).(Utf8Info).String()
+	return class.GetConstant(class.GetConstant(class.ThisClass).(*ClassInfo).NameIndex).(*Utf8Info).String()
 }
 
 func (class *Class) SetClassName(name string) {
