@@ -19,6 +19,16 @@ type JarMember struct {
 	delete bool
 }
 
+func (member *JarMember) FromFile(filename string) error {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+	member.Name = filename
+	member.Buffer = &bytes.Buffer{Data: &data, Index: 0}
+	return nil
+}
+
 func (member *JarMember) Delete() {
 	member.delete = true
 }
