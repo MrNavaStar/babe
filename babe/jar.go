@@ -20,21 +20,21 @@ type JarMember struct {
 	delete bool
 }
 
-func (member *JarMember) FromFile(filename string) error {
+func JarMemberFromFile(filename string) (member JarMember, err error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return err
+		return member, err
 	}
 	member.Name = filename
 	member.Buffer = &bytes.Buffer{Data: &data, Index: 0}
-	return nil
+	return member, nil
 }
 
-func (member *JarMember) FromString(name string, str string) error {
+func JarMemberFromString(name string, str string) (member JarMember) {
 	data := []byte(str)
 	member.Name = name
 	member.Buffer = &bytes.Buffer{Data: &data, Index: 0}
-	return nil
+	return member
 }
 
 func (member *JarMember) Delete() {
