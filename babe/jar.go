@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/mrnavastar/assist/bytes"
@@ -51,6 +52,31 @@ func (member *JarMember) GetAsClass() (Class, error) {
 	return class, nil
 }
 
+type Jar struct {
+	Name  string
+	c     chan *JarMember
+	tasks *errgroup.Group
+	group *errgroup.Group
+}
+
+func (jar *Jar) Task(task func(jar *Jar) error) {
+	jar.tasks.Go(func() error {
+		return task(jar)
+	})
+}
+
+func (jar *Jar) Add(member JarMember) {
+	jar.c <- &member
+}
+
+func (jar *Jar) Wait() error {
+	if err := jar.tasks.Wait(); err != nil {
+		return err
+	}
+	close(jar.c)
+	return jar.group.Wait()
+}
+
 func ForJarMember(filename string, iter func(*JarMember) error) error {
 	reader, err := zip.OpenReader(filename)
 	if err != nil {
@@ -85,11 +111,13 @@ func ForJarMember(filename string, iter func(*JarMember) error) error {
 	return errs.Wait()
 }
 
-func CreateJar(filename string) (chan *JarMember, *errgroup.Group) {
-	c := make(chan *JarMember)
+func CreateJar(filename string) (jar Jar) {
+	jar.Name = path.Base(filename)
+	jar.c = make(chan *JarMember)
+	jar.tasks, _ = errgroup.WithContext(context.Background())
+	jar.group, _ = errgroup.WithContext(context.Background())
 
-	errs, _ := errgroup.WithContext(context.Background())
-	errs.Go(func() error {
+	jar.group.Go(func() error {
 		file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.ModePerm)
 		if err != nil {
 			return err
@@ -97,7 +125,7 @@ func CreateJar(filename string) (chan *JarMember, *errgroup.Group) {
 		writer := zip.NewWriter(file)
 
 		for {
-			member, ok := <-c
+			member, ok := <-jar.c
 			if !ok {
 				break
 			}
@@ -113,7 +141,7 @@ func CreateJar(filename string) (chan *JarMember, *errgroup.Group) {
 		}
 		return writer.Close()
 	})
-	return c, errs
+	return jar
 }
 
 func ModifyJar(filename string, modifier func(*JarMember) error) error {
@@ -121,30 +149,22 @@ func ModifyJar(filename string, modifier func(*JarMember) error) error {
 		return fmt.Errorf("%s does not exist", filename)
 	}
 
-	c, errs := CreateJar(filename + "-modified.zip")
+	jar := CreateJar(filename + "-modified.zip")
+	jar.Task(func(jar *Jar) error {
+		return ForJarMember(filename, func(member *JarMember) error {
+			if err := modifier(member); err != nil {
+				return err
+			}
 
-	err := ForJarMember(filename, func(member *JarMember) error {
-		if err := modifier(member); err != nil {
-			return err
-		}
-
-		if !member.delete {
-			c <- member
-		}
-		return nil
+			if !member.delete {
+				jar.Add(*member)
+			}
+			return nil
+		})
 	})
-	close(c)
 
-	if err != nil {
+	if err := os.Rename(filename+"-modified.zip", filename); err != nil {
 		return err
 	}
-
-	if err = os.Remove(filename); err != nil {
-		return err
-	}
-	if err = os.Rename(filename+"-modified.zip", filename); err != nil {
-		return err
-	}
-
-	return errs.Wait()
+	return jar.Wait()
 }
