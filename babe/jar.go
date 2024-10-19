@@ -29,6 +29,13 @@ func (member *JarMember) FromFile(filename string) error {
 	return nil
 }
 
+func (member *JarMember) FromString(name string, str string) error {
+	data := []byte(str)
+	member.Name = name
+	member.Buffer = &bytes.Buffer{Data: &data, Index: 0}
+	return nil
+}
+
 func (member *JarMember) Delete() {
 	member.delete = true
 }
@@ -107,14 +114,14 @@ func CreateJar(filename string) (chan *JarMember, *errgroup.Group) {
 		return writer.Close()
 	})
 	return c, errs
-} 
+}
 
 func ModifyJar(filename string, modifier func(*JarMember) error) error {
 	if !fss.Exists(filename) {
 		return fmt.Errorf("%s does not exist", filename)
 	}
 
-	c, errs := CreateJar(filename+"-modified.zip")
+	c, errs := CreateJar(filename + "-modified.zip")
 
 	err := ForJarMember(filename, func(member *JarMember) error {
 		if err := modifier(member); err != nil {
@@ -131,7 +138,7 @@ func ModifyJar(filename string, modifier func(*JarMember) error) error {
 	if err != nil {
 		return err
 	}
-	
+
 	if err = os.Remove(filename); err != nil {
 		return err
 	}
